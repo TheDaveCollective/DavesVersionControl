@@ -14,7 +14,32 @@ using Microsoft.Xrm.Sdk.Organization;
 using System.Net.NetworkInformation;
 //using Microsoft.ApplicationInsights;
 //using Microsoft.ApplicationInsights.Extensibility;
+/*
+select top 15 * from adx_webformsessions             order by modifiedon desc
+select top 15 * from DataPerformances                                     order by modifiedon desc
+select top 15 * from mspp_entityformmetadatas                             order by modifiedon desc
+select top 15 * from mspp_entityforms                                     order by modifiedon desc
+select top 15 * from mspp_webformmetadatas                                order by modifiedon desc
+select top 15 * from mspp_webforms                                        order by modifiedon desc
+select top 15 * from mspp_webformsteps                                    order by modifiedon desc
+select top 15 * from SystemForms                                          order by modifiedon desc
+select top 15 * from TransformationMappings                               order by modifiedon desc
+select top 15 * from TransformationParameterMappings                      order by modifiedon desc
+select top 15 * from UserForms                                            order by modifiedon desc
 
+
+select top 15 * from mspp_entityform
+select top 15 * from mspp_entityformmetadata
+select top 15 * from mspp_webform
+select top 15 * from mspp_webformmetadata
+select top 15 * from mspp_webformstep
+select top 15 * from SystemForm
+select top 15 * from TransformationMapping
+select top 15 * from TransformationParameterMapping
+select top 15 * from UserForm
+
+
+ * */
 namespace DavesVersionControl
 {
     public class Onpublish : IPlugin
@@ -31,14 +56,35 @@ namespace DavesVersionControl
   </entity>
 </fetch>";
 
-        string FetchForms = @"<fetch top='10'>
+        string FetchForms = @"
+<fetch xmlns:generator='MarkMpn.SQL4CDS'>
   <entity name='solutioncomponent'>
-    <link-entity name='systemform' to='objectid' from='formid' alias='sf' link-type='inner'>
-      <all-attributes />
+    <attribute name='solutioncomponentid' />
+    <link-entity name='entity' to='objectid' from='entityid' alias='e' link-type='inner'>
+      <attribute name='entityid' />
+      <link-entity name='systemform' to='objecttypecode' from='objecttypecode' alias='forms' link-type='inner'>
+        <all-attributes />
+        <filter>
+          <condition attribute='ismanaged' operator='eq' value='0' />
+          <condition attribute='publishedon' operator='last-x-hours' value='1' />
+        </filter>
+        <order attribute='formid' />
+      </link-entity>
+      <order attribute='entityid' />
+    </link-entity>
+    <link-entity name='solution' to='solutionid' from='solutionid' alias='s' link-type='inner'>
+      <attribute name='solutionid' />
+      <filter>
+        <condition attribute='uniquename' operator='in'>
+          {solutionlist}
+        </condition>
+      </filter>
+      <order attribute='solutionid' />
     </link-entity>
     <filter>
-      <condition attribute='solutionid' operator='eq' value='{targetsolution}' />
+      <condition attribute='componenttype' operator='eq' value='1' />
     </filter>
+    <order attribute='solutioncomponentid' />
   </entity>
 </fetch>";
         //7965d2e9-2c2f-ee11-bdf4-000d3aa9a09b
@@ -99,7 +145,7 @@ namespace DavesVersionControl
                         }
                     }
                 }
-                /*
+                
                 // Log pre-image attributes.
                 if (context.PreEntityImages.Contains("Target"))
                 {
@@ -119,7 +165,11 @@ namespace DavesVersionControl
                         tracingService.Trace($"Post-Image Attribute: {attribute.Key} = {attribute.Value}");
                     }
                 }
-                */
+                /*
+                 * get all enities for solutions   (objectid = entyyid in solution compomants)
+                 * get all forms for those entitys (objecttypecode in systemforms) that were published  last 5 minutes
+                 * 
+                 * */
 
                 var solutioncollection = FetchXML(_service, tracingService, FetchSolution);
                 
@@ -134,7 +184,7 @@ namespace DavesVersionControl
 
                     var forms = FetchXML(_service, tracingService, fetchxml);
 
-                    tracingService.Trace("Plugin execution completed.");
+                    
 
                     foreach (Entity e in forms.Entities)
                     {
