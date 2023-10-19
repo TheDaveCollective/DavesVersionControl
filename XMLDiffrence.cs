@@ -58,33 +58,33 @@ namespace DavesVersionControl
             }
             tracingService.Trace($"XMLDiffrence FlushTrace END  {message}");
         }
-        public XDocument FindXmlDifferences(ITracingService tracingService,string xml1, string xml2)
+        public XDocument FindXmlDifferences(ITracingService tracingService,string xml1,string xml2)
         {
             try
             {
-                if (!string.IsNullOrEmpty(xml1))
+                if (string.IsNullOrEmpty(xml1))
                 {
                     tracingService.Trace($"FindXmlDifferences xml1 was null or empty");
                 }
-                if (!string.IsNullOrEmpty(xml2))
+                if (string.IsNullOrEmpty(xml2))
                 {
                     tracingService.Trace($"FindXmlDifferences xml2 was null or empty");
                 }
                 if (xml1.Length > 200)
                 {
-                    Trace(xml1.Substring(0, 200));
+                    Trace($"xml1={xml1.Substring(0, 200)}");
                 }
                 else
                 {
-                    Trace(xml1);
+                    Trace($"xml1={xml1}");
                 }
                 if (xml2.Length > 200)
                 {
-                    Trace(xml2.Substring(0, 200));
+                    Trace($"xml2={xml2.Substring(0, 200)}");
                 }
                 else
                 {
-                    Trace(xml2);
+                    Trace($"xml2={xml2}");
                 }
 
 
@@ -157,52 +157,72 @@ namespace DavesVersionControl
             {
                 Trace("foreach (var attr1 in attributes1)");
                 var matchingAttr = attributes2.FirstOrDefault(attr2 => attr2.Name == attr1.Name);
+                Trace(" matchingAttr = attributes2.FirstOrDefault(attr2 => attr2.Name == attr1.Name);");
 
+                Trace("if (matchingAttr == null || matchingAttr.Value != attr1.Value)");
                 if (matchingAttr == null || matchingAttr.Value != attr1.Value)
                 {
+                    Trace("true");
+                    Trace("if (!ignoreAttributes.Contains($\"{attr1.Name}\"))");
                     if (!ignoreAttributes.Contains($"{attr1.Name}"))
                     {
+                        Trace("true");
+                        Trace("yield return $\"Attribute '...");
                         yield return $"Attribute '{attr1.Name}':'{attr1.Value}' value is different '{matchingAttr.Value}'";
                     }
+                    Trace("false");
                 }
                 else
                 {
+                    Trace("false");
+                    Trace("attributes2.Remove(matchingAttr);");
                     attributes2.Remove(matchingAttr);
                 }
             }
 
+            Trace("foreach (var attr2 in attributes2)");
             foreach (var attr2 in attributes2)
             {
+                Trace("if (!ignoreAttributes.Contains(");
                 if (!ignoreAttributes.Contains($"{attr2.Name}"))
                 {
+                    Trace("true");
+                    Trace("if (!ignoreAttributes.Contains(");
                     yield return $"Attribute '{attr2.Name}':'{attr2.Value}' is missing in the first document";
                 }
 
             }
 
+            Trace("var elements1 = elem1.Elements().ToList();");
             // Compare child elements recursively.
             var elements1 = elem1.Elements().ToList();
+            Trace("var elements2 = elem2.Elements().ToList();");
             var elements2 = elem2.Elements().ToList();
 
+            Trace("if (elements1.Count != elements2.Count)");
             if (elements1.Count != elements2.Count)
             {
+                Trace("true");
                 yield return $"Number of child elements for {elem1.Name}:{elements1.Count} {elem2.Name}:{elements2.Count} is different path {elem1path}";
             }
-            Trace("if (elements1.Count != elements2.Count)");
 
 
+            Trace("foreach (var child1 in elements1)");
             foreach (var child1 in elements1)
             {
-                Trace(" foreach (var child1 in elements1) ");
+                Trace(" var matchingChild = elements2.FirstOrDefault(child2 => child2.Name == child1.Name); ");
                 var matchingChild = elements2.FirstOrDefault(child2 => child2.Name == child1.Name);
 
                 if (matchingChild == null)
                 {
+                    Trace("true");
                     yield return $"Child element '{child1.Name}':'{child1.Value}' is missing in the New document";
                 }
                 else
                 {
+                    Trace(" elements2.Remove(matchingChild); ");
                     elements2.Remove(matchingChild);
+                    Trace(" foreach (var difference in FindDifferences(tracingService,child1, matchingChild))");
 
                     foreach (var difference in FindDifferences(tracingService,child1, matchingChild))
                     {

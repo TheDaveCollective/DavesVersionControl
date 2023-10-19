@@ -14,29 +14,77 @@ using Microsoft.Xrm.Sdk.Organization;
 using System.Net.NetworkInformation;
 //using Microsoft.ApplicationInsights;
 //using Microsoft.ApplicationInsights.Extensibility;
+/*
+select top 15 * from adx_webformsessions             order by modifiedon desc
+select top 15 * from DataPerformances                                     order by modifiedon desc
+select top 15 * from mspp_entityformmetadatas                             order by modifiedon desc
+select top 15 * from mspp_entityforms                                     order by modifiedon desc
+select top 15 * from mspp_webformmetadatas                                order by modifiedon desc
+select top 15 * from mspp_webforms                                        order by modifiedon desc
+select top 15 * from mspp_webformsteps                                    order by modifiedon desc
+select top 15 * from SystemForms                                          order by modifiedon desc
+select top 15 * from TransformationMappings                               order by modifiedon desc
+select top 15 * from TransformationParameterMappings                      order by modifiedon desc
+select top 15 * from UserForms                                            order by modifiedon desc
 
+
+select top 15 * from mspp_entityform
+select top 15 * from mspp_entityformmetadata
+select top 15 * from mspp_webform
+select top 15 * from mspp_webformmetadata
+select top 15 * from mspp_webformstep
+select top 15 * from SystemForm
+select top 15 * from TransformationMapping
+select top 15 * from TransformationParameterMapping
+select top 15 * from UserForm
+
+
+ * */
 namespace DavesVersionControl
 {
     public class Onpublish : IPlugin
     {
-        string FetchSolution = $@"<?xml version=""1.0"" encoding=""utf-16""?>
+       /* string FetchSolution = @"<?xml version=""1.0"" encoding=""utf-16""?>
 <fetch top=""50"">
   <entity name=""solution"">
     <all-attributes />
     <filter>
-      <condition attribute=""uniquename"" operator=""eq"" value=""demo"" />
+       <condition attribute=""uniquename"" operator=""in"">
+        {solutionlist}
+      </condition>
     </filter>
   </entity>
 </fetch>";
-
-        string FetchForms = @"<fetch top='10'>
+       */
+        string FetchForms = @"
+<fetch xmlns:generator='MarkMpn.SQL4CDS'>
   <entity name='solutioncomponent'>
-    <link-entity name='systemform' to='objectid' from='formid' alias='sf' link-type='inner'>
-      <all-attributes />
+    <attribute name='solutioncomponentid' />
+    <link-entity name='entity' to='objectid' from='entityid' alias='e' link-type='inner'>
+      <attribute name='entityid' />
+      <link-entity name='systemform' to='objecttypecode' from='objecttypecode' alias='forms' link-type='inner'>
+        <all-attributes />
+        <filter>
+          <condition attribute='ismanaged' operator='eq' value='0' />
+          <condition attribute='publishedon' operator='last-x-hours' value='1' />
+        </filter>
+        <order attribute='formid' />
+      </link-entity>
+      <order attribute='entityid' />
+    </link-entity>
+    <link-entity name='solution' to='solutionid' from='solutionid' alias='s' link-type='inner'>
+      <attribute name='solutionid' />
+      <filter>
+        <condition attribute='uniquename' operator='in'>
+          {solutionlist}
+        </condition>
+      </filter>
+      <order attribute='solutionid' />
     </link-entity>
     <filter>
-      <condition attribute='solutionid' operator='eq' value='{targetsolution}' />
+      <condition attribute='componenttype' operator='eq' value='1' />
     </filter>
+    <order attribute='solutioncomponentid' />
   </entity>
 </fetch>";
         //7965d2e9-2c2f-ee11-bdf4-000d3aa9a09b
@@ -55,7 +103,20 @@ namespace DavesVersionControl
                 IOrganizationServiceFactory serviceFactory = (IOrganizationServiceFactory)serviceProvider.GetService(typeof(IOrganizationServiceFactory));
                 IOrganizationService _service = serviceFactory.CreateOrganizationService(context.UserId);
 
+                var Envriovars = GetEnvironmentVariables(tracingService, _service);
                 string targetentity = "";
+
+                var solutionlist = "";
+                if (Envriovars.ContainsKey("dm_SolutionsToVersionControl"))
+                {
+                    var solutionscsv = Envriovars["dm_SolutionsToVersionControl"];
+                    var split = solutionscsv.Split(',');
+                    foreach (var s in split)
+                    {
+                        solutionlist += $"<value>{s}</value>";
+                    }
+                    //FetchSolution = FetchSolution.Replace("{solutionlist}", solutionlist);
+                }
 
 
 
@@ -104,22 +165,31 @@ namespace DavesVersionControl
                         tracingService.Trace($"Post-Image Attribute: {attribute.Key} = {attribute.Value}");
                     }
                 }
+                /*
+SELECT forms.*
+FROM   solutioncomponent AS com, entity AS e, systemform AS forms, solution AS s
+WHERE  com.solutionid = s.solutionid
+       AND com.componenttype = 1
+       AND e.entityid = com.objectid
+       AND forms.objecttypecode = e.objecttypecode
+       AND forms.ismanaged = 0
+       AND s.uniquename IN ('demo')
+       AND forms.publishedon > DATEADD(mi, -6, SYSUTCDATETIME());
 
-                var solutioncollection = FetchXML(_service, tracingService, FetchSolution);
-                // Your plugin logic here...
-                var targetsolution = Guid.Empty;
-                foreach (Entity e in solutioncollection.Entities)
-                {
-                    tracingService.Trace($" solution : {e.Id} - {e.Id.ToString("B")} ");
-                    targetsolution = e.Id;
-                }
 
-                var fetchxml = FetchForms.Replace("{targetsolution}", targetsolution.ToString("B"));
+                 * 
+                 * */
+                var theuser = _service.Retrieve("systemuser", context.InitiatingUserId, new ColumnSet(true));
+                string entityjsonString2 = JsonSerializer.Serialize(theuser);
+                tracingService.Trace($" input data name : {entityjsonString2}");
+                var theusersname = theuser.Attributes["domainname"].ToString(); ;
+
+
+                var fetchxml = FetchForms.Replace("{solutionlist}", solutionlist);
 
                 var forms = FetchXML(_service, tracingService, fetchxml);
 
-                tracingService.Trace("Plugin execution completed.");
-
+                tracingService.Trace($" number of form received is {forms.TotalRecordCount}  -- {forms.Entities.Count}");
                 foreach (Entity e in forms.Entities)
                 {
                     tracingService.Trace($" Form  : {e.Id} - {e.Id.ToString("B")} ");
@@ -131,47 +201,60 @@ namespace DavesVersionControl
                             tracingService.Trace($" attrubte name : {kv.Key}");
                         }
 
-                        string currententitytype = GetAliasedAttributeValue<String>(tracingService, e, "sf.objecttypecode");
+                        string currententitytype = GetAliasedAttributeValue<String>(tracingService, e, "forms.objecttypecode");
+                        tracingService.Trace($"cuurenntitype = {currententitytype} targertype = {targetentity}");
                         if (currententitytype == targetentity)
                         {
                             var versionentry = new Entity("dm_versionhistory");
 
                             var oldrow = RetrieveMostRecentByField(_service, tracingService,
-                                "dm_versionhistory", "dm_formid", 
-                                GetAliasedAttributeValue<Guid>(tracingService, e, "sf.formid").ToString()
+                                "dm_versionhistory", "dm_formid",
+                                GetAliasedAttributeValue<Guid>(tracingService, e, "forms.formid").ToString("B")
                                 , new ColumnSet(true));
                             string changes = "";
                             try
                             {
-                                versionentry["dm_entity"] = e.LogicalName;
+                                //e.Attributes["forms.formxml"] = "removed";
+                                //e.Attributes["forms.formjson"] = "removed";
+
+                                //string entityjsonString2 = JsonSerializer.Serialize(e);
+                                //tracingService.Trace($" input data name : {entityjsonString2}");
+                                
+
+                                versionentry["dm_entity"] = targetentity;
                                 //versionentry[""] = e.Attributes[""];
                                 versionentry["dm_comment"] = "something changed maybe";
 
 
-                                versionentry["dm_entity"] = GetAliasedAttributeValue<String>(tracingService, e, "sf.objecttypecode");
-                                versionentry["dm_formid"] = GetAliasedAttributeValue<Guid>(tracingService, e, "sf.formid").ToString();
-                                versionentry["dm_formidunique"] = GetAliasedAttributeValue<Guid>(tracingService, e, "sf.formidunique").ToString();
-                                versionentry["dm_formname"] = GetAliasedAttributeValue<String>(tracingService, e, "sf.name");
+                                //versionentry["dm_entity"] = GetAliasedAttributeValue<String>(tracingService, e, "sf.objecttypecode");
+                                versionentry["dm_formid"] = GetAliasedAttributeValue<Guid>(tracingService, e, "forms.formid").ToString("B");
+                                versionentry["dm_formidunique"] = GetAliasedAttributeValue<Guid>(tracingService, e, "forms.formidunique").ToString("B");
+                                versionentry["dm_formname"] = GetAliasedAttributeValue<String>(tracingService, e, "forms.name");
                                 versionentry["dm_name"] = $"{versionentry["dm_entity"]}:{versionentry["dm_formname"]}:{DateTime.UtcNow.ToString("yyyy/MM/dd hh:mm:ss.fffff")}";
                                 // versionentry["dm_postdata"] = e.Attributes[""];
                                 if (oldrow != null)
                                 {
                                     versionentry["dm_predata"] = oldrow.ToEntityReference();
                                 }
-                                versionentry["dm_savedon"] = GetAliasedAttributeValue<String>(tracingService, e, "sf.publishedon");
-                                versionentry["dm_solutionid"] = e.GetAttributeValue<EntityReference>("solutionid").Id.ToString();
-                                versionentry["dm_solutionname"] = e.GetAttributeValue<EntityReference>("solutionid").Id.ToString();
+                                versionentry["dm_savedon"] = GetAliasedAttributeValue<String>(tracingService, e, "forms.publishedon");
+                                versionentry["dm_solutionid"] = GetAliasedAttributeValue<Guid>(tracingService, e, "s.solutionid").ToString("B"); 
+                              //  versionentry["dm_solutionname"] = e.GetAttributeValue<EntityReference>("solutionid").Id.ToString();
                                 versionentry["dm_step"] = context.Stage.ToString();
                                 //versionentry["dm_temp"] = e.Attributes["sf.formjson"];
-                                versionentry["dm_componenttype"] = e.GetAttributeValue<OptionSetValue>("componenttype").Value.ToString();
-                                versionentry["dm_data"] = GetAliasedAttributeValue<String>(tracingService, e, "sf.formxml");
+                                versionentry["dm_componenttype"] = "System Form";
+                                versionentry["dm_componentid"] = e.GetAttributeValue<Guid>("solutioncomponentid").ToString("B");
 
-                                
+
+                                versionentry["dm_data"] = GetAliasedAttributeValue<String>(tracingService, e, "forms.formxml");
+                                versionentry["dm_jsondata"] = GetAliasedAttributeValue<String>(tracingService, e, "forms.formjson");
+                                versionentry["dm_publishinguser"] = theusersname;
+
+
                                 try
                                 {
                                     if (oldrow != null)
                                     {
-                                        if ( oldrow.Attributes.ContainsKey("dm_data"))
+                                        if (oldrow.Attributes.ContainsKey("dm_data"))
                                         {
                                             if (!String.IsNullOrEmpty((String)oldrow["dm_data"]))
                                             {
@@ -189,7 +272,8 @@ namespace DavesVersionControl
                                                 tracingService.Trace($"old record dm_data was empty");
                                             }
                                         }
-                                        else {
+                                        else
+                                        {
                                             tracingService.Trace($"old record didn't have a dm_data ");
                                         }
                                     }
@@ -199,13 +283,19 @@ namespace DavesVersionControl
                                     }
 
                                 }
-                                catch(Exception ex)
+                                catch (Exception ex)
                                 {
-                                    changes = $"error in geting the diffrence {ex.Message}";
-                                    
+                                    changes = $"error in getting the difference {ex.Message}";
+
                                 }
                                 tracingService.Trace($"{changes}");
                                 versionentry["dm_comment"] = changes;
+
+                                e.Attributes["forms.formxml"] = "removed";
+                                e.Attributes["forms.formjson"] = "removed";
+
+                                string entityjsonString = JsonSerializer.Serialize(e);
+                                versionentry["dm_temp"] = entityjsonString;
 
 
                             }
@@ -236,39 +326,13 @@ namespace DavesVersionControl
                         else
                         {
                             tracingService.Trace($" wasn't the right entity type it was '{currententitytype}' we were looking for '{targetentity}'");
+                            e.Attributes["forms.formxml"] = "removed";
+                            e.Attributes["forms.formjson"] = "removed";
+
+                            string entityjsonString = JsonSerializer.Serialize(e);
+                            tracingService.Trace(entityjsonString);
                         }
-                        /*
-                             <attribute name="ancestorformid" />
-    <attribute name="canbedeleted" />
-    <attribute name="componentstate" />
-    <attribute name="description" />
-    <attribute name="formactivationstate" />
-    <attribute name="formid" />
-    <attribute name="formidunique" />
-    <attribute name="formjson" />
-    <attribute name="formpresentation" />
-    <attribute name="formxml" />
-    <attribute name="formxmlmanaged" />
-    <attribute name="introducedversion" />
-    <attribute name="isairmerged" />
-    <attribute name="iscustomizable" />
-    <attribute name="isdefault" />
-    <attribute name="isdesktopenabled" />
-    <attribute name="ismanaged" />
-    <attribute name="istabletenabled" />
-    <attribute name="name" />
-    <attribute name="objecttypecode" />
-    <attribute name="organizationid" />
-    <attribute name="overwritetime" />
-    <attribute name="publishedon" />
-    <attribute name="solutionid" />
-    <attribute name="supportingsolutionid" />
-    <attribute name="type" />
-    <attribute name="uniquename" />
-    <attribute name="version" />
-    <attribute name="versionnumber" />
-    <order attribute="publishedon" descending="true" />
-                          */
+
 
 
                     }
@@ -277,6 +341,7 @@ namespace DavesVersionControl
                         tracingService.Trace(ex.Message);
                     }
                 }
+
             }
             catch (Exception ex)
             {
@@ -288,7 +353,7 @@ namespace DavesVersionControl
 
         private EntityCollection FetchXML(IOrganizationService _service, ITracingService tracingService, string fetchXml)
         {
-            tracingService.Trace($"fetxml to run :{fetchXml}");
+            tracingService.Trace($"fetchxml to run :{fetchXml}");
             // Create a FetchExpression object.
 
             var fetchExpression = new FetchExpression(fetchXml);
@@ -408,7 +473,67 @@ namespace DavesVersionControl
             return default(T);
         }
 
+        static IReadOnlyDictionary<string, string> EnvVariables;
+        static readonly object Lock = new object();
+
+        protected static IReadOnlyDictionary<string, string> GetEnvironmentVariables(ITracingService tracingService, IOrganizationService _service)
+        {
+            tracingService.Trace($"Entered GetEnvironmentVariables");
+
+            // Singleton pattern to load environment variables less
+            if (EnvVariables == null)
+            {
+                lock (Lock)
+                {
+                    if (EnvVariables == null)
+                    {
+                        tracingService.Trace($"Load environment variables");
+                        var envVariables = new Dictionary<string, string>();
+
+                        var query = new QueryExpression("environmentvariabledefinition")
+                        {
+                            ColumnSet = new ColumnSet("statecode", "defaultvalue", "valueschema",
+                              "schemaname", "environmentvariabledefinitionid", "type"),
+                            LinkEntities =
+                        {
+                            new LinkEntity
+                            {
+                                JoinOperator = JoinOperator.LeftOuter,
+                                LinkFromEntityName = "environmentvariabledefinition",
+                                LinkFromAttributeName = "environmentvariabledefinitionid",
+                                LinkToEntityName = "environmentvariablevalue",
+                                LinkToAttributeName = "environmentvariabledefinitionid",
+                                Columns = new ColumnSet("statecode", "value", "environmentvariablevalueid"),
+                                EntityAlias = "v"
+                            }
+                        }
+                        };
+
+                        var results = _service.RetrieveMultiple(query);
+                        if (results?.Entities.Count > 0)
+                        {
+                            foreach (var entity in results.Entities)
+                            {
+                                var schemaName = entity.GetAttributeValue<string>("schemaname");
+                                var value = entity.GetAttributeValue<AliasedValue>("v.value")?.Value?.ToString();
+                                var defaultValue = entity.GetAttributeValue<string>("defaultvalue");
+
+                                tracingService.Trace($"- schemaName:{schemaName}, value:{value}, defaultValue:{defaultValue}");
+                                if (schemaName != null && !envVariables.ContainsKey(schemaName))
+                                    envVariables.Add(schemaName, string.IsNullOrEmpty(value) ? defaultValue : value);
+                            }
+                        }
+
+                        EnvVariables = envVariables;
+                    }
+                }
+            }
+
+            tracingService.Trace($"Exiting GetEnvironmentVariables");
+            return EnvVariables;
+        }
     }
+
 
 
 }
