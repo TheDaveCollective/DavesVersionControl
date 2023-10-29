@@ -5,17 +5,15 @@ name: export-and-commit-solution
 on:
   workflow_dispatch:
     inputs:
-      # Change this value
       solution_name: 'davesversioncontrol'
-        description: 'name of the solution to worked on from Power Platform'
-        required: true
-        default: GitHubActionsLab
+      description: 'name of the solution to worked on from Power Platform'
+      required: true
+      default: GitHubActionsLab
        
       
     
       
 env:
-#edit your values here
   ENVIRONMENT_URL: 'https://org2d1252f0.crm4.dynamics.com/'
   CLIENT_ID: ${{ secrets.D365_APPS }}
   TENANT_ID: ${{ secrets.D365_TENANT }}
